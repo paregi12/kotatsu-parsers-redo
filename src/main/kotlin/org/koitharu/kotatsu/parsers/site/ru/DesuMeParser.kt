@@ -22,7 +22,8 @@ internal class DesuMeParser(context: MangaLoaderContext) :
 
     override val configKeyDomain = ConfigKey.Domain(
         "x.desu.city",
-        "desu.city",
+        "" +
+            "desu.city",
         "desu.work",
         "desu.store",
         "desu.win",
@@ -153,9 +154,11 @@ internal class DesuMeParser(context: MangaLoaderContext) :
         val json = webClient.httpGet(fullUrl)
             .parseJson()
             .getJSONObject("response") ?: throw ParseException("Invalid response", fullUrl)
+        val chapterId = chapter.url.substringAfterLast("/")
         return json.getJSONObject("pages").getJSONArray("list").mapJSON { jo ->
+            val pageNum = jo.getLong("page")
             MangaPage(
-                id = generateUid(jo.getLong("page")),
+                id = generateUid("$chapterId-$pageNum"),
                 preview = null,
                 source = chapter.source,
                 url = jo.getString("img"),
