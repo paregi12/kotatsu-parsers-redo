@@ -273,9 +273,12 @@ internal class BatoToParser(context: MangaLoaderContext) : PagedMangaParser(
 			val result = ArrayList<MangaPage>(images.length())
 			repeat(images.length()) { i ->
 				val url = images.getString(i)
+				// Fix image URLs: replace //k with //n to avoid loading issues
+				val fixedUrl = url.replace(Regex("(^|//)k(\\d*\\.)"), "$1n$2")
+				val finalUrl = if (args.length() == 0) fixedUrl else fixedUrl + "?" + args.getString(i)
 				result += MangaPage(
-					id = generateUid(url),
-					url = if (args.length() == 0) url else url + "?" + args.getString(i),
+					id = generateUid(finalUrl),
+					url = finalUrl,
 					preview = null,
 					source = source,
 				)
