@@ -42,7 +42,7 @@ class ParserProcessor(
                 codeGenerator.createNewFile(
                     dependencies = dependencies,
                     packageName = "org.koitharu.kotatsu.parsers.model",
-                    fileName = "MangaSource",
+                    fileName = "MangaParserSource",
                 )
             } catch (e: FileAlreadyExistsException) {
                 logger.warn(e.toString(), null)

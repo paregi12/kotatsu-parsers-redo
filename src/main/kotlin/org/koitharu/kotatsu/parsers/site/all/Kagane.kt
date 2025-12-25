@@ -49,16 +49,17 @@ internal class Kagane(context: MangaLoaderContext) :
     override val filterCapabilities: MangaListFilterCapabilities
         get() = MangaListFilterCapabilities(
             isSearchSupported = true,
-            isSearchWithFiltersSupported = true
+            isSearchWithFiltersSupported = true,
+            isMultipleTagsSupported = true
         )
 
-    override val client = webClient.newBuilder()
+    private val client = context.httpClient.newBuilder()
         .addInterceptor(this)
         .build()
 
     // ================= WEBVIEW INTERCEPTION =================
     // Configured to match the definition in org.koitharu.kotatsu.parsers.webview.InterceptionConfig
-    override val webViewInterceptionConfig = InterceptionConfig(
+    val webViewInterceptionConfig = InterceptionConfig(
         timeoutMs = 20000,
         // Match the API image endpoint which contains the token
         urlPattern = Regex(""".*/api/v1/books/.*/file/.*\?token=.*"""),
@@ -123,12 +124,16 @@ internal class Kagane(context: MangaLoaderContext) :
         val requestUrl = if (!filter.query.isNullOrEmpty()) "$url&name=${filter.query.urlEncoded()}" else url
         val requestBody = jsonBody.toString().toRequestBody("application/json".toMediaType())
 
+        val headers = getRequestHeaders().newBuilder()
+            .add("Origin", "https://$domain")
+            .add("Referer", "https://$domain/")
+            .build()
+
         val response = client.newCall(
             Request.Builder()
                 .url(requestUrl)
                 .post(requestBody)
-                .addHeader("Origin", "https://$domain")
-                .addHeader("Referer", "https://$domain/")
+                .headers(headers)
                 .build()
         ).await().parseJson()
 
@@ -161,7 +166,11 @@ internal class Kagane(context: MangaLoaderContext) :
     override suspend fun getDetails(manga: Manga): Manga {
         val seriesId = manga.url
         val url = "$apiUrl/api/v1/series/$seriesId"
-        val json = webClient.httpGet(url).parseJson()
+        val headers = getRequestHeaders().newBuilder()
+            .add("Origin", "https://$domain")
+            .add("Referer", "https://$domain/")
+            .build()
+        val json = webClient.httpGet(url, headers).parseJson()
 
         val desc = StringBuilder()
         json.optString("summary").takeIf { it.isNotEmpty() }?.let { desc.append(it).append("\n\n") }
@@ -185,7 +194,7 @@ internal class Kagane(context: MangaLoaderContext) :
         } ?: emptySet()
 
         val booksUrl = "$apiUrl/api/v1/books/$seriesId"
-        val booksJson = webClient.httpGet(booksUrl).parseJson()
+        val booksJson = webClient.httpGet(booksUrl, headers).parseJson()
         val content = booksJson.optJSONArray("content") ?: JSONArray()
 
         val chapters = ArrayList<MangaChapter>()
@@ -260,7 +269,12 @@ internal class Kagane(context: MangaLoaderContext) :
             val indexStr = url.queryParameter("index") ?: "0"
             val index = indexStr.toInt()
 
-            val response = chain.proceed(request)
+            val newRequest = request.newBuilder()
+                .addHeader("Origin", "https://$domain")
+                .addHeader("Referer", "https://$domain/")
+                .build()
+
+            var response = chain.proceed(newRequest)
             
             // If request fails (401/403) and we have a new token, try one retry
             if (!response.isSuccessful && response.code in 401..403) {
@@ -268,12 +282,9 @@ internal class Kagane(context: MangaLoaderContext) :
                 if (!currentToken.isNullOrEmpty() && request.url.queryParameter("token") != currentToken) {
                     response.close()
                     val newUrl = request.url.newBuilder().setQueryParameter("token", currentToken).build()
-                    val newRequest = request.newBuilder().url(newUrl).build()
-                    return intercept(chain.withConnectTimeout(chain.connectTimeoutMillis(), java.util.concurrent.TimeUnit.MILLISECONDS)
-                                        .withReadTimeout(chain.readTimeoutMillis(), java.util.concurrent.TimeUnit.MILLISECONDS)
-                                        .withWriteTimeout(chain.writeTimeoutMillis(), java.util.concurrent.TimeUnit.MILLISECONDS))
+                    val retryRequest = newRequest.newBuilder().url(newUrl).build()
+                    response = chain.proceed(retryRequest)
                 }
-                return response
             }
 
             if (!response.isSuccessful) return response
