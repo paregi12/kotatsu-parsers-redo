@@ -76,25 +76,20 @@ internal class MangaGo(context: MangaLoaderContext) :
             ?: doc.select("div.row")
 
         return items.mapNotNull { element ->
-            val titleEl = element.selectFirst("h2 a")
+            val linkEl = element.selectFirst("a.thm-effect") 
+                ?: element.selectFirst("h2 a")
                 ?: element.selectFirst("h3 a")
-                ?: element.selectFirst("span.title a")
-                ?: element.selectFirst("span.tit a")
-                ?: element.selectFirst("a[href*=/read-manga/]:not(:has(img))")
+                ?: element.selectFirst("a[href*=/read-manga/]")
             
-            if (titleEl == null) {
-                return@mapNotNull null
-            }
-            val title = titleEl.text()
-            println("Search result title: $title")
-            val href = titleEl.attr("href")
+            if (linkEl == null) return@mapNotNull null
+            
+            val title = linkEl.attr("title").takeIf { it.isNotEmpty() } ?: linkEl.text()
+            val href = linkEl.attr("href")
             val relativeUrl = href.toRelativeUrl(domain)
             val absoluteUrl = href.toAbsoluteUrl(domain)
+            
             val imgEl = element.selectFirst("img")
-            val img = (imgEl?.attr("data-src")
-                ?: imgEl?.attr("data-original")
-                ?: imgEl?.attr("src"))?.takeIf { it.isNotEmpty() && !it.startsWith("data:") }
-                ?.toAbsoluteUrl(domain)
+            val img = imgEl?.src()
 
             Manga(
                 id = generateUid(relativeUrl),
@@ -152,7 +147,8 @@ internal class MangaGo(context: MangaLoaderContext) :
             )
         }.reversed()
 
-        val coverUrl = doc.selectFirst("div.manga_left img")?.attr("src")?.toAbsoluteUrl(domain)
+        val imgEl = doc.selectFirst("div.manga_left img")
+        val coverUrl = imgEl?.src()
 
         return manga.copy(
             title = title,
@@ -245,6 +241,16 @@ internal class MangaGo(context: MangaLoaderContext) :
     // ---------------------------------------------------------------
     override fun intercept(chain: Interceptor.Chain): Response {
         val request = chain.request()
+        val url = request.url.toString()
+        
+        if (url.contains("mangapicgallery.com")) {
+            val newRequest = request.newBuilder()
+                .header("Referer", "https://$domain/")
+                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+                .build()
+            return chain.proceed(newRequest)
+        }
+
         val response = chain.proceed(request)
         val frag = request.url.fragment ?: return response
 
