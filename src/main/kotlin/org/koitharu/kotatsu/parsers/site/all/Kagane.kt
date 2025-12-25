@@ -3,6 +3,7 @@ package org.koitharu.kotatsu.parsers.site.all
 import okhttp3.Interceptor
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
 import org.json.JSONArray
 import org.json.JSONObject
@@ -296,12 +297,12 @@ internal class Kagane(context: MangaLoaderContext) :
                     window.location.href = "https://kotatsu.intercept/error?msg=" + encodeURIComponent(e.toString());
                 }
             })();
-        ".trimIndent()
+        """.trimIndent()
 
         // 4. Intercept
         val config = InterceptionConfig(
             timeoutMs = 60000,
-            urlPattern = Regex("https://kotatsu\.intercept/.*"),
+            urlPattern = Regex("https://kotatsu\\.intercept/.*", RegexOption.IGNORE_CASE),
             pageScript = script
         )
         
@@ -312,28 +313,28 @@ internal class Kagane(context: MangaLoaderContext) :
         val resultRequest = requests.firstOrNull() ?: throw Exception("Failed to intercept DRM token")
         
         if (resultRequest.url.contains("/error")) {
-            val msg = resultRequest.getQueryParameter("msg") ?: "Unknown error"
-            throw Exception("DRM JS Error: $msg")
+            val errorMsg = resultRequest.getQueryParameter("msg") ?: "Unknown error"
+            throw Exception("DRM JS Error: $errorMsg")
         }
         
         val dataStr = resultRequest.getQueryParameter("data") ?: throw Exception("No data in interception")
         val data = JSONObject(dataStr)
         
         val token = data.getString("token")
-        val cacheUrl = data.getString("cache")
+        val currentCacheUrl = data.getString("cache")
         val mappingJson = data.optJSONObject("mapping")
         
         val mapping = mutableMapOf<Int, String>()
-        mappingJson?.keys()?.forEach {
-            val idx = it.toIntOrNull()
-            if (idx != null) mapping[idx] = mappingJson.getString(it)
+        mappingJson?.keys()?.forEach { key ->
+            val idx = key.toIntOrNull()
+            if (idx != null) mapping[idx] = mappingJson.getString(key)
         }
 
         return (0 until pageCount).map { index ->
             val pageIndex = index + 1
             val fileId = mapping[pageIndex] ?: "page_$pageIndex.jpg"
             
-            val imageUrl = "$cacheUrl/api/v1/books/$seriesId/file/$chapterId/$fileId?token=$token&index=$pageIndex"
+            val imageUrl = "$currentCacheUrl/api/v1/books/$seriesId/file/$chapterId/$fileId?token=$token&index=$pageIndex"
             MangaPage(
                 id = generateUid(imageUrl),
                 url = imageUrl,
