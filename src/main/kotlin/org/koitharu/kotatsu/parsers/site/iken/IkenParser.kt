@@ -64,7 +64,7 @@ internal abstract class IkenParser(
 			append("&perPage=18&searchTerm=")
 
 			filter.query?.let {
-				append(filter.query.urlEncoded())
+				append(it.urlEncoded())
 			}
 
 			if (filter.tags.isNotEmpty()) {
@@ -103,13 +103,15 @@ internal abstract class IkenParser(
 
 	protected open fun parseMangaList(json: JSONObject): List<Manga> {
 		return json.getJSONArray("posts").mapJSON {
-			val url = "/series/${it.getString("slug")}"
+			val slug = it.getString("slug")
+			val id = it.getLong("id")
+			val url = "$slug#$id"
 			val isNsfwSource = it.getBooleanOrDefault("hot", false)
 			val author = it.getString("author")
 			Manga(
-				id = it.getLong("id"),
+				id = generateUid(url),
 				url = url,
-				publicUrl = url.toAbsoluteUrl(domain),
+				publicUrl = "/series/$slug".toAbsoluteUrl(domain),
 				coverUrl = it.getString("featuredImage"),
 				title = it.getString("postTitle"),
 				altTitles = setOfNotNull(it.getStringOrNull("alternativeTitles")),
@@ -134,23 +136,23 @@ internal abstract class IkenParser(
 	protected open val datePattern = "yyyy-MM-dd"
 
 	override suspend fun getDetails(manga: Manga): Manga {
-		val seriesId = manga.id
-		val url = "https://$defaultDomain/api/chapters?postId=$seriesId&skip=0&take=900&order=desc&userid="
+		val slug = manga.url.substringBefore("#")
+		val postId = manga.url.substringAfter("#")
+		
+		val seriesPageUrl = "/series/$slug".toAbsoluteUrl(domain)
+		val seriesPageHtml = webClient.httpGet(seriesPageUrl).parseRaw()
+		val userId = userIdRegex.find(seriesPageHtml)?.groupValues?.get(1) ?: ""
+
+		val url = "https://$defaultDomain/api/chapters?postId=$postId&skip=0&take=900&order=desc&userid=$userId"
 		val json = webClient.httpGet(url).parseJson().getJSONObject("post")
-		val slug = json.getStringOrNull("slug")
 		val data = json.getJSONArray("chapters").asTypedList<JSONObject>()
 		val dateFormat = SimpleDateFormat(datePattern, Locale.ENGLISH)
 		return manga.copy(
 			chapters = data.mapChapters(reversed = true) { i, it ->
-				val slugName = if (slug.isNullOrEmpty()) {
-					it.getJSONObject("mangaPost").getString("slug")
-				} else {
-					slug
-				}
-				val chapterUrl = "/series/$slugName/${it.getString("slug")}"
+				val chapterUrl = "/series/$slug/${it.getString("slug")}"
 				MangaChapter(
 					id = it.getLong("id"),
-					title = null,
+					title = "Chapter ${it.opt("number")}",
 					number = it.getFloatOrDefault("number", 0f),
 					volume = 0,
 					url = chapterUrl,
@@ -170,7 +172,7 @@ internal abstract class IkenParser(
 		val doc = webClient.httpGet(fullUrl).parseHtml()
 
 		if (doc.selectFirst("svg.lucide-lock") != null) {
-            throw Exception("Need to unlock chapter!")
+            throw Exception("Unlock chapter in webview")
         }
 
 		val imagesJson = doc.getNextJson("images")
@@ -187,14 +189,30 @@ internal abstract class IkenParser(
 	}
 
 	protected open suspend fun fetchAvailableTags(): Set<MangaTag> {
-		val doc = webClient.httpGet("https://$domain/series").parseHtml()
-		return doc.selectLastOrThrow("select").select("option[value]").mapNotNullToSet {
-			val key = it.attrOrNull("value") ?: return@mapNotNullToSet null
-			MangaTag(
-				key = key,
-                title = it.text().ifBlank { key }.toTitleCase(sourceLocale),
-                source = source,
-			)
+		return runCatching {
+			val url = "https://$defaultDomain/api/query?perPage=9999"
+			val json = webClient.httpGet(url).parseJson()
+			val posts = json.getJSONArray("posts")
+			val tags = mutableSetOf<MangaTag>()
+			for (i in 0 until posts.length()) {
+				val post = posts.getJSONObject(i)
+				val genres = post.optJSONArray("genres") ?: continue
+				for (j in 0 until genres.length()) {
+					val genre = genres.getJSONObject(j)
+					tags.add(MangaTag(genre.getString("name"), genre.getInt("id").toString(), source))
+				}
+			}
+			tags
+		}.getOrElse {
+			val doc = webClient.httpGet("https://$domain/series").parseHtml()
+			doc.selectLastOrThrow("select").select("option[value]").mapNotNullToSet {
+				val key = it.attrOrNull("value") ?: return@mapNotNullToSet null
+				MangaTag(
+					key = key,
+					title = it.text().ifBlank { key }.toTitleCase(sourceLocale),
+					source = source,
+				)
+			}
 		}
 	}
 
@@ -244,5 +262,9 @@ internal abstract class IkenParser(
 			val item = jsonArray.getJSONObject(index)
 			item.getString("url")
 		}
+	}
+
+	companion object {
+		private val userIdRegex = Regex(""""user\\":\{\\"id\\":\\"([^"']+)\\"""")
 	}
 }
