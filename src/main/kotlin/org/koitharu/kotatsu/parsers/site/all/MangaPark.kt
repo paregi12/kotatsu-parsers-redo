@@ -2,6 +2,8 @@ package org.koitharu.kotatsu.parsers.site.all
 
 import okhttp3.Headers
 import okhttp3.HttpUrl.Companion.toHttpUrl
+import okhttp3.Interceptor
+import okhttp3.Response
 import org.json.JSONArray
 import org.json.JSONObject
 import org.koitharu.kotatsu.parsers.Broken
@@ -239,8 +241,7 @@ internal class MangaPark(context: MangaLoaderContext) :
 
 		val pages = ArrayList<MangaPage>(urls.length())
 		for (i in 0 until urls.length()) {
-			var url = urls.getString(i)
-			url = url.replace(Regex("s\\d\\d"), "s00")
+			val url = urls.getString(i)
 
 			pages.add(
 				MangaPage(
@@ -294,5 +295,47 @@ internal class MangaPark(context: MangaLoaderContext) :
 
 		val match = Regex("(?:Ch\\.|Chapter)\\s*(\\d+(?:\\.\\d+)?)", RegexOption.IGNORE_CASE).find(cleaned)
 		return match?.groupValues?.get(1)?.toFloatOrNull() ?: -1f
+	}
+
+	override fun intercept(chain: Interceptor.Chain): Response {
+		val request = chain.request()
+		val response = chain.proceed(request)
+
+		if (response.isSuccessful || !SERVER_PATTERN.containsMatchIn(request.url.toString())) {
+			return response
+		}
+
+		val urlString = request.url.toString()
+		response.close()
+
+		for (server in SERVERS) {
+			val newUrl = urlString.replace(SERVER_PATTERN, "https://$server")
+			if (newUrl == urlString) continue
+
+			val newRequest = request.newBuilder()
+				.url(newUrl)
+				.build()
+
+			try {
+				val newResponse = chain
+					.withConnectTimeout(5, java.util.concurrent.TimeUnit.SECONDS)
+					.withReadTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
+					.proceed(newRequest)
+
+				if (newResponse.isSuccessful) {
+					return newResponse
+				}
+				newResponse.close()
+			} catch (e: Exception) {
+				// ignore
+			}
+		}
+
+		return chain.proceed(request)
+	}
+
+	companion object {
+		private val SERVER_PATTERN = Regex("https://s\\d{2}")
+		private val SERVERS = listOf("s01", "s03", "s04", "s00", "s05", "s06", "s07", "s08", "s09", "s10", "s02")
 	}
 }
