@@ -19,6 +19,7 @@ import org.koitharu.kotatsu.parsers.webview.InterceptedRequest
 import org.koitharu.kotatsu.parsers.webview.InterceptionConfig
 import java.math.BigInteger
 import java.net.URI
+import java.net.URLDecoder
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.charset.StandardCharsets
@@ -317,7 +318,8 @@ internal class Kagane(context: MangaLoaderContext) :
             throw Exception("DRM JS Error: $errorMsg")
         }
         
-        val challenge = resultRequest.getQueryParameter("challenge") ?: throw Exception("No challenge in interception")
+        val challengeEncoded = resultRequest.getQueryParameter("challenge") ?: throw Exception("No challenge in interception")
+        val challenge = URLDecoder.decode(challengeEncoded, StandardCharsets.UTF_8.name())
 
         // 5. POST to API to get token
         val challengeUrl = "$apiUrl/api/v1/books/$seriesId/file/$chapterId"
