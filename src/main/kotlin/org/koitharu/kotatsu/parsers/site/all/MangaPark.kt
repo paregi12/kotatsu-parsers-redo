@@ -268,6 +268,7 @@ internal class MangaPark(context: MangaLoaderContext) :
 				.add("Content-Type", "application/json")
 				.add("Referer", "https://$domain/")
 				.add("apollo-require-preflight", "true")
+				.add("x-apollo-operation-name", "kotatsu")
 				.build()
 		).parseJson()
 
