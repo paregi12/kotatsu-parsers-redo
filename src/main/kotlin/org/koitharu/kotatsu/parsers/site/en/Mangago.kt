@@ -356,7 +356,7 @@ internal class MangaGo(context: MangaLoaderContext) :
             cipher.init(Cipher.DECRYPT_MODE, keySpec, ivSpec)
             val decryptedBytes = cipher.doFinal(inputBytes)
 
-            return String(decryptedBytes, Charsets.UTF_8)
+            return String(decryptedBytes, Charsets.UTF_8).trim { it <= '\u0020' }
         } catch (e: Exception) {
             throw Exception("Failed to decrypt image list: ${e.message}")
         }
@@ -387,7 +387,7 @@ internal class MangaGo(context: MangaLoaderContext) :
         } catch (e: Exception) {
             // If failure, it might already be unscrambled
         }
-        return imgList
+        return imgList.trim { it <= '\u0020' }
     }
 
     private fun unscrambleString(str: String, keys: List<Int>): String {
