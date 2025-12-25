@@ -12,6 +12,7 @@ import org.koitharu.kotatsu.parsers.util.*
 import java.text.SimpleDateFormat
 import java.util.*
 import kotlin.math.ceil
+import kotlinx.coroutines.delay
 
 @MangaSourceParser("WEEBDEX", "WeebDex")
 internal class WeebDex(context: MangaLoaderContext) :
@@ -136,6 +137,7 @@ internal class WeebDex(context: MangaLoaderContext) :
 		val langParam = ""
 
 		while (true) {
+			if (page > 1) delay(500)
 			val chaptersUrl = "$mangaUrl/chapters?limit=100&page=$page&order=desc$langParam"
 			val chResponse = webClient.httpGet(chaptersUrl, getRequestHeaders()).parseJson()
 			val data = chResponse.optJSONArray("data") ?: break

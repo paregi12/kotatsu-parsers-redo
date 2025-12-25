@@ -208,16 +208,13 @@ internal class Kagane(context: MangaLoaderContext) :
             val dateStr = ch.optString("release_date")
             val pageCount = ch.optInt("pages_count", 0)
 
-            // Pack metadata: "seriesId;chapterId;pageCount"
-            val packedUrl = "$seriesId;$chId;$pageCount"
-
             chapters.add(
                 MangaChapter(
                     id = generateUid(chId),
                     title = chTitle,
                     number = number,
                     volume = 0,
-                    url = packedUrl,
+                    url = "/series/$seriesId/$chId?pages=$pageCount",
                     uploadDate = try { dateFormat.parse(dateStr)?.time ?: 0L } catch (e: Exception) { 0L },
                     source = source,
                     scanlator = null,
@@ -236,11 +233,19 @@ internal class Kagane(context: MangaLoaderContext) :
     }
 
     override suspend fun getPages(chapter: MangaChapter): List<MangaPage> {
-        val parts = chapter.url.split(";")
-        if (parts.size != 3) throw Exception("Invalid chapter URL format")
-        val seriesId = parts[0]
-        val chapterId = parts[1]
-        val pageCount = parts[2].toInt()
+        val url = chapter.url
+        val uri = java.net.URI(url)
+        val pathParts = uri.path.split("/").filter { it.isNotEmpty() }
+        // Expected path: series/{seriesId}/{chapterId}
+        if (pathParts.size < 3) throw Exception("Invalid chapter URL format: $url")
+        
+        val seriesId = pathParts[1]
+        val chapterId = pathParts[2]
+        val query = uri.query
+        val pageCount = query?.split("&")
+            ?.find { it.startsWith("pages=") }
+            ?.substringAfter("=")
+            ?.toIntOrNull() ?: throw Exception("Missing page count in URL")
 
         val cacheUrl = "https://yukine.$domain"
         

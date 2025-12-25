@@ -267,6 +267,7 @@ internal class MangaPark(context: MangaLoaderContext) :
 			extraHeaders = getRequestHeaders().newBuilder()
 				.add("Content-Type", "application/json")
 				.add("Referer", "https://$domain/")
+				.add("apollo-require-preflight", "true")
 				.build()
 		).parseJson()
 
