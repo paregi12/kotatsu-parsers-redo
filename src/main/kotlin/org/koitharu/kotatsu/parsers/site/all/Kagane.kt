@@ -94,13 +94,24 @@ internal class Kagane(context: MangaLoaderContext) :
             .add("Referer", "https://$domain/")
             .build()
 
-        val response = context.httpClient.newCall(
+        val responseObj = context.httpClient.newCall(
             Request.Builder()
                 .url(requestUrl)
                 .post(requestBody)
                 .headers(headers)
                 .build()
-        ).await().parseJson()
+        ).await()
+
+        val responseBody = responseObj.body?.string() ?: ""
+        if (!responseObj.isSuccessful) {
+             throw Exception("Search error ${responseObj.code}: $responseBody")
+        }
+
+        val response = try {
+            JSONObject(responseBody)
+        } catch (e: Exception) {
+            throw Exception("Invalid JSON search response: $responseBody")
+        }
 
         val content = response.optJSONArray("content") ?: return emptyList()
 
@@ -135,7 +146,10 @@ internal class Kagane(context: MangaLoaderContext) :
             .add("Origin", "https://$domain")
             .add("Referer", "https://$domain/")
             .build()
-        val json = webClient.httpGet(url, headers).parseJson()
+        val resp = webClient.httpGet(url, headers)
+        val respBody = resp.body?.string() ?: ""
+        if (!resp.isSuccessful) throw Exception("Details error ${resp.code}: $respBody")
+        val json = try { JSONObject(respBody) } catch(e: Exception) { throw Exception("Invalid JSON details: $respBody") }
 
         val desc = StringBuilder()
         json.optString("summary").takeIf { it.isNotEmpty() }?.let { desc.append(it).append("\n\n") }
@@ -159,7 +173,10 @@ internal class Kagane(context: MangaLoaderContext) :
         } ?: emptySet()
 
         val booksUrl = "$apiUrl/api/v1/books/$seriesId"
-        val booksJson = webClient.httpGet(booksUrl, headers).parseJson()
+        val booksResp = webClient.httpGet(booksUrl, headers)
+        val booksBody = booksResp.body?.string() ?: ""
+        if (!booksResp.isSuccessful) throw Exception("Chapter list error ${booksResp.code}: $booksBody")
+        val booksJson = try { JSONObject(booksBody) } catch(e: Exception) { throw Exception("Invalid JSON chapters: $booksBody") }
         val content = booksJson.optJSONArray("content") ?: JSONArray()
 
         val chapters = ArrayList<MangaChapter>()
