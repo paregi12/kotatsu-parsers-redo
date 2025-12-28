@@ -87,8 +87,15 @@ internal class AtsuMoe(context: MangaLoaderContext) :
         val title = json.optString("title").ifEmpty {
             json.optString("englishTitle", "Unknown")
         }
+
+        // List results have "image", search results have "poster"
         val image = json.optString("image")
-        val coverUrl = if (image.isNotEmpty()) "https://$domain/static/$image" else null
+        val poster = json.optString("poster")
+        val coverUrl = when {
+            image.isNotEmpty() -> "https://$domain/static/$image"
+            poster.isNotEmpty() -> "https://$domain/static/$poster"
+            else -> null
+        }
 
         return Manga(
             id = generateUid(id),
@@ -216,12 +223,8 @@ internal class AtsuMoe(context: MangaLoaderContext) :
 
         return (0 until pages.length()).map { i ->
             val page = pages.getJSONObject(i)
-            val pageUrl = page.getString("url")
-            val fullUrl = if (pageUrl.startsWith("http")) {
-                pageUrl
-            } else {
-                "https://$domain$pageUrl"
-            }
+            val imagePath = page.getString("image")
+            val fullUrl = "https://$domain$imagePath"
 
             MangaPage(
                 id = generateUid(fullUrl),
