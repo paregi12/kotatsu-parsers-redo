@@ -19,7 +19,7 @@ internal abstract class WeebDexParser(
 
     override val configKeyDomain = ConfigKey.Domain("weebdex.org")
     private val apiUrl = "https://api.weebdex.org/"
-    private val cdnUrl = "https://cdn.weebdex.org/"
+    private val coverCdnUrl = "https://srv.notdelta.xyz/"
 
     override val availableSortOrders: Set<SortOrder> = EnumSet.of(
         SortOrder.UPDATED,
@@ -129,7 +129,7 @@ internal abstract class WeebDexParser(
         val coverUrl = if (coverObj != null) {
             val coverId = coverObj.getString("id")
             val ext = coverObj.getString("ext")
-            "${cdnUrl}covers/$id/$coverId$ext"
+            "${coverCdnUrl}covers/$id/$coverId$ext"
         } else null
 
         // Get tags from relationships
@@ -222,12 +222,12 @@ internal abstract class WeebDexParser(
             val id = manga.url.substringAfterLast("/")
             val coverId = coverObj.getString("id")
             val ext = coverObj.getString("ext")
-            "${cdnUrl}covers/$id/$coverId$ext"
+            "${coverCdnUrl}covers/$id/$coverId$ext"
         } else manga.coverUrl
 
         // Get chapters for this language
         val mangaId = manga.url.substringAfterLast("/")
-        val chaptersJson = webClient.httpGet("${apiUrl}manga/$mangaId/chapter?lang=$lang&limit=500&sort=chapter").parseJson()
+        val chaptersJson = webClient.httpGet("${apiUrl}manga/$mangaId/chapters?lang=$lang&limit=500&order=desc").parseJson()
         val chapters = parseChapterList(chaptersJson, mangaId)
 
         return manga.copy(
@@ -284,17 +284,29 @@ internal abstract class WeebDexParser(
             )
         }
 
-        return chapters.reversed() // Reverse to show newest first
+        return chapters // Already in descending order from API (order=desc)
     }
 
     override suspend fun getPages(chapter: MangaChapter): List<MangaPage> {
-        val json = webClient.httpGet("${apiUrl}${chapter.url}").parseJson()
-        val pagesArray = json.getJSONArray("pages")
+        // Extract chapter ID from URL: /manga/{mangaId}/chapter/{chapterId}
+        val chapterId = chapter.url.substringAfterLast("/")
+
+        // Fetch chapter data from API
+        val json = webClient.httpGet("${apiUrl}chapter/$chapterId").parseJson()
+
+        // Get the CDN node URL
+        val node = json.getString("node")
+
+        // Prefer optimized webp images, fallback to original data
+        val pagesArray = json.optJSONArray("data_optimized") ?: json.getJSONArray("data")
 
         return (0 until pagesArray.length()).map { i ->
-            val pageUrl = pagesArray.getString(i)
+            val pageObj = pagesArray.getJSONObject(i)
+            val filename = pageObj.getString("name")
+            val pageUrl = "$node/data/$chapterId/$filename"
+
             MangaPage(
-                id = generateUid("$pageUrl-$i"),
+                id = generateUid(pageUrl),
                 url = pageUrl,
                 preview = null,
                 source = source
