@@ -244,7 +244,7 @@ internal class Comix(context: MangaLoaderContext) :
     // -------------------------
     private suspend fun getChapters(hashId: String): List<MangaChapter> = coroutineScope {
         val firstPageUrl = "$apiBaseUrl/manga/$hashId/chapters".toHttpUrl().newBuilder().apply {
-            addQueryParameter("order[number]", "desc") // Request Newest First
+            addQueryParameter("order[number]", "asc") // Request Older (1) to Newer (100)
             addQueryParameter("limit", "100")
             addQueryParameter("page", "1")
         }.build()
@@ -270,7 +270,7 @@ internal class Comix(context: MangaLoaderContext) :
             val deferreds = (2..maxPage).map { page ->
                 async {
                     val url = "$apiBaseUrl/manga/$hashId/chapters".toHttpUrl().newBuilder().apply {
-                        addQueryParameter("order[number]", "desc")
+                        addQueryParameter("order[number]", "asc") // Request Older to Newer
                         addQueryParameter("limit", "100")
                         addQueryParameter("page", page.toString())
                     }.build()
@@ -304,20 +304,16 @@ internal class Comix(context: MangaLoaderContext) :
             var scanlatorName: String? = null
             var groupId = 0
 
-            // Try singular object first
             val groupObj = item.optJSONObject("scanlation_group")
             if (groupObj != null) {
                 scanlatorName = groupObj.optString("name", "").nullIfEmpty()
                 groupId = item.optInt("scanlation_group_id", 0)
-            } 
-            // Fallback to plural array (common in Comick based APIs)
-            else {
+            } else {
                  val groupsArr = item.optJSONArray("scanlation_groups")
                  if (groupsArr != null && groupsArr.length() > 0) {
                      val firstGroup = groupsArr.optJSONObject(0)
                      scanlatorName = firstGroup?.optString("name", "")?.nullIfEmpty()
-                     // Usually id is inside the group object in the array
-                     groupId = firstGroup?.optInt("id", 0) ?: 0 
+                     groupId = firstGroup?.optInt("id", 0) ?: 0
                  }
             }
 
@@ -343,8 +339,7 @@ internal class Comix(context: MangaLoaderContext) :
                 uploadDate = createdAt * 1000L,
                 source = source,
                 scanlator = scanlatorName,
-                // Setting 'branch' enables the floating window in Kotatsu to switch scanlators
-                branch = scanlatorName 
+                branch = scanlatorName
             )
         }
     }
