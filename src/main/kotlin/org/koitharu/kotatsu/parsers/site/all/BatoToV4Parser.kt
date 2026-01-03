@@ -1,12 +1,8 @@
 package org.koitharu.kotatsu.parsers.site.all
 
-import androidx.collection.ArraySet
 import okhttp3.Headers
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.Interceptor
-import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.Request
-import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
 import org.json.JSONArray
 import org.json.JSONObject
@@ -22,14 +18,17 @@ import org.koitharu.kotatsu.parsers.util.json.*
 import java.util.*
 import java.util.concurrent.TimeUnit
 
-@MangaSourceParser("BATOTO_V4", "Bato.To V4")
-internal class BatoToV4Parser(context: MangaLoaderContext) : PagedMangaParser(
-	context = context,
-	source = MangaParserSource.BATOTO_V4,
-	pageSize = 36,
-) {
+@MangaSourceParser("BATOTOV4", "Bato.To v4")
+internal class BatoToV4Parser(context: MangaLoaderContext) :
+	PagedMangaParser(context, MangaParserSource.BATOTOV4, 36) {
 
-	override val configKeyDomain = ConfigKey.Domain("bato.si", "battwo.com", "bato.to", "bato.ing")
+	override val configKeyDomain = ConfigKey.Domain(
+		"bato.si",
+		"battwo.com",
+		"bato.to",
+		"bato.ing"
+	)
+
 	override val userAgentKey = ConfigKey.UserAgent(UserAgents.CHROME_DESKTOP)
 
 	override fun onCreateConfig(keys: MutableCollection<ConfigKey<*>>) {
@@ -60,7 +59,12 @@ internal class BatoToV4Parser(context: MangaLoaderContext) : PagedMangaParser(
 	override suspend fun getFilterOptions(): MangaListFilterOptions {
 		return MangaListFilterOptions(
 			availableTags = GENRE_OPTIONS.mapToSet { (title, key) -> MangaTag(title, key, source) },
-			availableStates = EnumSet.of(MangaState.ONGOING, MangaState.FINISHED, MangaState.PAUSED, MangaState.ABANDONED),
+			availableStates = EnumSet.of(
+				MangaState.ONGOING,
+				MangaState.FINISHED,
+				MangaState.PAUSED,
+				MangaState.ABANDONED
+			),
 			availableLocales = LANGUAGES.values.toSet(),
 		)
 	}
@@ -72,8 +76,6 @@ internal class BatoToV4Parser(context: MangaLoaderContext) : PagedMangaParser(
 				put("size", pageSize)
 				put("word", filter.query ?: "")
 				put("sortby", when (order) {
-					SortOrder.POPULARITY -> "field_score"
-					SortOrder.RATING -> "field_score"
 					SortOrder.UPDATED -> "field_upload"
 					SortOrder.NEWEST -> "field_public"
 					SortOrder.ALPHABETICAL -> "field_name"
@@ -170,8 +172,8 @@ internal class BatoToV4Parser(context: MangaLoaderContext) : PagedMangaParser(
 				scanlator = groups,
 				branch = groups
 			)
-		} 
-        // .asReversed()
+		}
+		// .asReversed()
 	}
 
 	override suspend fun getPages(chapter: MangaChapter): List<MangaPage> {
@@ -187,7 +189,7 @@ internal class BatoToV4Parser(context: MangaLoaderContext) : PagedMangaParser(
 			val urlString = urls.getString(i)
 			MangaPage(
 				id = generateUid(urlString),
-				url = urlString + "#page",
+				url = "$urlString#page",
 				preview = null,
 				source = source
 			)
@@ -232,18 +234,7 @@ internal class BatoToV4Parser(context: MangaLoaderContext) : PagedMangaParser(
 	}
 
 	private suspend fun graphQLQuery(endpoint: String, query: String, variables: JSONObject): JSONObject {
-		val payload = JSONObject().apply {
-			put("query", query)
-			put("variables", variables)
-		}
-		val response = webClient.httpPost(endpoint.toHttpUrl(), payload, getRequestHeaders())
-		val json = response.parseJson()
-		json.optJSONArray("errors")?.let {
-			if (it.length() != 0) {
-				throw GraphQLException(it)
-			}
-		}
-		return json
+		return webClient.graphQLQuery(endpoint, query, variables, getRequestHeaders())
 	}
 
 	private fun parseManga(json: JSONObject): Manga {
@@ -520,46 +511,46 @@ internal class BatoToV4Parser(context: MangaLoaderContext) : PagedMangaParser(
 		)
 
 		private const val COMIC_NODE = """
-data {
-	id
-	name
-	altNames
-	authors
-	artists
-	originalStatus
-	uploadStatus
-	genres
-	summary
-	extraInfo
-	urlPath
-	urlCoverOri
-}
-"""
+			data {
+				id
+				name
+				altNames
+				authors
+				artists
+				originalStatus
+				uploadStatus
+				genres
+				summary
+				extraInfo
+				urlPath
+				urlCoverOri
+			}
+		"""
 
-		val COMIC_SEARCH_QUERY = """
-			query (${'$'}select: Comic_Browse_Select) {
-				get_comic_browse(select: ${'$'}select) {
+		val COMIC_SEARCH_QUERY = $$"""
+			query ($select: Comic_Browse_Select) {
+				get_comic_browse(select: $select) {
 					paging {
 						next
 					}
 					items {
-						$COMIC_NODE
+						$$COMIC_NODE
 					}
 				}
 			}
 		""".trimIndent()
 
-		val COMIC_NODE_QUERY = """
-			query get_comicNode(${'$'}id: ID!) {
-				get_comicNode(id: ${'$'}id) {
-					$COMIC_NODE
+		val COMIC_NODE_QUERY = $$"""
+			query get_comicNode($id: ID!) {
+				get_comicNode(id: $id) {
+					$$COMIC_NODE
 				}
 			}
 		""".trimIndent()
 
-		val CHAPTER_LIST_QUERY = """
-			query get_comic_chapterList(${'$'}comicId: ID!, ${'$'}start: Int) {
-				get_comic_chapterList(comicId: ${'$'}comicId, start: ${'$'}start) {
+		val CHAPTER_LIST_QUERY = $$"""
+			query get_comic_chapterList($comicId: ID!, $start: Int) {
+				get_comic_chapterList(comicId: $comicId, start: $start) {
 					data {
 						comicId
 						id
@@ -583,9 +574,9 @@ data {
 			}
 		""".trimIndent()
 
-		val CHAPTER_NODE_QUERY = """
-			query get_chapterNode(${'$'}id: ID!) {
-				get_chapterNode(id: ${'$'}id) {
+		val CHAPTER_NODE_QUERY = $$"""
+			query get_chapterNode($id: ID!) {
+				get_chapterNode(id: $id) {
 					data {
 						id
 						comicId
