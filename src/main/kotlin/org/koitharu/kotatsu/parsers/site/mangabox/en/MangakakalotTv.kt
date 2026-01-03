@@ -2,7 +2,6 @@ package org.koitharu.kotatsu.parsers.site.mangabox.en
 
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
-import org.koitharu.kotatsu.parsers.Broken
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaSourceParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
@@ -11,7 +10,6 @@ import org.koitharu.kotatsu.parsers.site.mangabox.MangaboxParser
 import org.koitharu.kotatsu.parsers.util.*
 import java.util.*
 
-@Broken("Connection refused")
 @MangaSourceParser("MANGAKAKALOTTV", "Mangakakalot.tv", "en")
 internal class MangakakalotTv(context: MangaLoaderContext) :
 	MangaboxParser(context, MangaParserSource.MANGAKAKALOTTV) {
