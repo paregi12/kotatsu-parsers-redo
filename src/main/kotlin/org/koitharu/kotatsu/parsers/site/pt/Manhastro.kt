@@ -1,4 +1,4 @@
-package org.koitharu.kotatsu.parsers.site.madara.pt
+package org.koitharu.kotatsu.parsers.site.pt
 
 import org.json.JSONArray
 import org.json.JSONObject
