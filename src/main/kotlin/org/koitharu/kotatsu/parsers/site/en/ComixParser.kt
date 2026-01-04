@@ -340,48 +340,59 @@ internal class Comix(context: MangaLoaderContext) :
             page++
         }
 
-        // Build chapters with branches for different scanlation teams (like MangaDex does for languages)
-        val chaptersBuilder = ChaptersListBuilder(allChapters.size)
-        val branchedChapters = HashMap<String?, HashMap<Float, MangaChapter>>()
-
-        for (item in allChapters) {
-            val chapterId = item.getLong("chapter_id")
-            val number = item.getDouble("number").toFloat()
-            val name = item.optString("name", "").nullIfEmpty()
-            val createdAt = item.getLong("created_at")
-            val scanlationGroup = item.optJSONObject("scanlation_group")
+        // Group chapters by scanlation team
+        val chaptersByTeam = mutableMapOf<String, MutableList<JSONObject>>()
+        for (chapter in allChapters) {
+            val scanlationGroup = chapter.optJSONObject("scanlation_group")
             val teamName = scanlationGroup?.optString("name", null) ?: "Unknown"
+            chaptersByTeam.getOrPut(teamName) { mutableListOf() }.add(chapter)
+        }
 
-            // Generate unique branch name for this team
-            val branch = (allChapters.indices).firstNotNullOf { i ->
-                val b = if (i == 0) teamName else "$teamName ($i)"
-                if (branchedChapters[b]?.get(number) == null) b else null
-            }
+        // Get all unique chapter numbers
+        val allChapterNumbers = allChapters.map { it.getDouble("number").toFloat() }.toSet()
 
-            val title = if (name != null) {
-                "Chapter $number: $name"
-            } else {
-                "Chapter $number"
-            }
+        // Build chapters with branches - each team gets complete chapter list with gaps filled
+        val chaptersBuilder = ChaptersListBuilder(allChapters.size * chaptersByTeam.size)
 
-            val chapter = MangaChapter(
-                id = generateUid(chapterId.toString()),
-                title = title,
-                number = number,
-                volume = 0,
-                url = "/title/$hashId/$chapterId-chapter-${number.toInt()}",
-                uploadDate = createdAt * 1000L, // Convert to milliseconds
-                source = source,
-                scanlator = teamName,
-                branch = branch,
-            )
+        for ((teamName, teamChapters) in chaptersByTeam) {
+            // Map of chapter numbers this team has
+            val teamChapterMap = teamChapters.associateBy { it.getDouble("number").toFloat() }
 
-            // Add chapter to builder and track in branchedChapters map
-            if (chaptersBuilder.add(chapter)) {
-                branchedChapters.getOrPut(branch, ::HashMap)[number] = chapter
+            // For each chapter number, use team's version if available, otherwise find best alternative
+            for (chapterNumber in allChapterNumbers) {
+                val chapterData = teamChapterMap[chapterNumber]
+                    ?: allChapters.find { it.getDouble("number").toFloat() == chapterNumber }
+                    ?: continue
+
+                val chapterId = chapterData.getLong("chapter_id")
+                val number = chapterData.getDouble("number").toFloat()
+                val name = chapterData.optString("name", "").nullIfEmpty()
+                val createdAt = chapterData.getLong("created_at")
+                val scanlationGroup = chapterData.optJSONObject("scanlation_group")
+                val actualTeamName = scanlationGroup?.optString("name", null) ?: "Unknown"
+
+                val title = if (name != null) {
+                    "Chapter $number: $name"
+                } else {
+                    "Chapter $number"
+                }
+
+                val chapter = MangaChapter(
+                    id = generateUid("$teamName-$chapterId"),
+                    title = title,
+                    number = number,
+                    volume = 0,
+                    url = "/title/$hashId/$chapterId-chapter-${number.toInt()}",
+                    uploadDate = createdAt * 1000L,
+                    source = source,
+                    scanlator = actualTeamName,
+                    branch = teamName,
+                )
+
+                chaptersBuilder.add(chapter)
             }
         }
 
-        return chaptersBuilder.toList()
+        return chaptersBuilder.toList().reversed()
     }
 }
