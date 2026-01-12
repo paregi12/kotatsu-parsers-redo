@@ -380,9 +380,26 @@ internal class Azoramoon(context: MangaLoaderContext) :
 				val contextStart = maxOf(0, imagesIndex - 50)
 				val contextEnd = minOf(scriptContent.length, imagesIndex + 200)
 				println("[Azoramoon] Context around images: ${scriptContent.substring(contextStart, contextEnd)}")
+
+				// Show exact characters with escaping
+				val debugContext = scriptContent.substring(imagesIndex, minOf(scriptContent.length, imagesIndex + 50))
+				println("[Azoramoon] Raw chars after images: ${debugContext.map { it.code.toString(16) }.joinToString(" ")}")
 			}
 
-			val imagesMatch = Regex("""\\\"images\\\":\[([\s\S]*?)\],\\\"team\"""").find(scriptContent)
+			// Try different patterns to see which one matches
+			val pattern1 = """\\\"images\\\":\[([\s\S]*?)\],\\\"team\""""
+			val pattern2 = """"images":\[([\s\S]*?)\],"team""""
+			val pattern3 = """\"images\":\[([\s\S]*?)\],\"team\""""
+
+			val match1 = Regex(pattern1).find(scriptContent)
+			val match2 = Regex(pattern2).find(scriptContent)
+			val match3 = Regex(pattern3).find(scriptContent)
+
+			println("[Azoramoon] Pattern1 (\\\\\\\"): ${match1 != null}")
+			println("[Azoramoon] Pattern2 (\"): ${match2 != null}")
+			println("[Azoramoon] Pattern3 (\\\"): ${match3 != null}")
+
+			val imagesMatch = match1 ?: match2 ?: match3
 			println("[Azoramoon] Script $index regex match: ${imagesMatch != null}")
 
 			if (imagesMatch != null) {
