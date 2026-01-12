@@ -359,15 +359,12 @@ internal class Azoramoon(context: MangaLoaderContext) :
 		val fullUrl = chapter.url.toAbsoluteUrl(domain)
 		val doc = webClient.httpGet(fullUrl).parseHtml()
 
-		// Extract images from JSON data in script tag
-		// The data is in Next.js format: self.__next_f.push([1,"...escaped JSON..."])
 		val scripts = doc.select("script:containsData(__next_f.push)")
 		println("[Azoramoon] Found ${scripts.size} script tags")
 
 		for ((index, script) in scripts.withIndex()) {
 			val scriptContent = script.data()
 
-			// In the escaped JSON string, images appears as \"images\":
 			val hasImages = scriptContent.contains("\\\"images\\\":")
 			println("[Azoramoon] Script $index: length=${scriptContent.length}, contains 'images'=$hasImages")
 
@@ -377,18 +374,14 @@ internal class Azoramoon(context: MangaLoaderContext) :
 
 			println("[Azoramoon] Script $index snippet: ${scriptContent.take(500)}")
 
-			// Pattern: \"images\":[...]
-			// We need to find the array and handle the escaped JSON
 			val imagesMatch = Regex("""\\\"images\\\":\[(.*?)\],\\\"team\"""").find(scriptContent)
 			println("[Azoramoon] Script $index regex match: ${imagesMatch != null}")
 
 			if (imagesMatch != null) {
-				// Extract and unescape the JSON
 				val escapedImagesJson = "[${imagesMatch.groupValues[1]}]"
 
-				// Unescape the JSON string (handle \" -> " and \\ -> \)
 				val imagesJson = escapedImagesJson
-					.replace("\\\\", "\u0000") // Temporarily replace \\ to avoid conflicts
+					.replace("\\\\", "\u0000")
 					.replace("\\\"", "\"")
 					.replace("\u0000", "\\")
 
@@ -423,7 +416,6 @@ internal class Azoramoon(context: MangaLoaderContext) :
 				} catch (e: Exception) {
 					println("[Azoramoon] Error parsing JSON: ${e.message}")
 					e.printStackTrace()
-					// Try next script tag
 					continue
 				}
 			}
