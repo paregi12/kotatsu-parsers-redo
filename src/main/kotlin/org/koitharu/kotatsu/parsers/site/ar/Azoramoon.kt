@@ -360,17 +360,15 @@ internal class Azoramoon(context: MangaLoaderContext) :
 		val doc = webClient.httpGet(fullUrl).parseHtml()
 
 		// Extract images from JSON data in script tag
-		// There are multiple script tags with __next_f.push, we need to find the one with images
+		// The data is in Next.js format: self.__next_f.push([1,"...escaped JSON..."])
 		val scripts = doc.select("script:containsData(__next_f.push)")
 		println("[Azoramoon] Found ${scripts.size} script tags")
 
 		for ((index, script) in scripts.withIndex()) {
-			// Use .data() instead of .html() for script tag content
 			val scriptContent = script.data()
 
-			// Check if this script contains the images array
-			// After Jsoup parses, one level of escaping is removed, so we look for \"images\":
-			val hasImages = scriptContent.contains("\"images\":")
+			// In the escaped JSON string, images appears as \"images\":
+			val hasImages = scriptContent.contains("\\\"images\\\":")
 			println("[Azoramoon] Script $index: length=${scriptContent.length}, contains 'images'=$hasImages")
 
 			if (!hasImages) {
@@ -379,15 +377,21 @@ internal class Azoramoon(context: MangaLoaderContext) :
 
 			println("[Azoramoon] Script $index snippet: ${scriptContent.take(500)}")
 
-			// Find the "images": array in the JSON
-			// The images array ends with ],"team" so we use that as our endpoint
-			// Pattern: "images":[...],"team"
-			val imagesMatch = Regex(""""images":\[(.*?)\],"team"""").find(scriptContent)
+			// Pattern: \"images\":[...]
+			// We need to find the array and handle the escaped JSON
+			val imagesMatch = Regex("""\\\"images\\\":\[(.*?)\],\\\"team\"""").find(scriptContent)
 			println("[Azoramoon] Script $index regex match: ${imagesMatch != null}")
 
 			if (imagesMatch != null) {
-				// The matched content is already unescaped by Jsoup
-				val imagesJson = "[${imagesMatch.groupValues[1]}]"
+				// Extract and unescape the JSON
+				val escapedImagesJson = "[${imagesMatch.groupValues[1]}]"
+
+				// Unescape the JSON string (handle \" -> " and \\ -> \)
+				val imagesJson = escapedImagesJson
+					.replace("\\\\", "\u0000") // Temporarily replace \\ to avoid conflicts
+					.replace("\\\"", "\"")
+					.replace("\u0000", "\\")
+
 				println("[Azoramoon] Extracted JSON length: ${imagesJson.length}")
 				println("[Azoramoon] First 300 chars of JSON: ${imagesJson.take(300)}")
 
