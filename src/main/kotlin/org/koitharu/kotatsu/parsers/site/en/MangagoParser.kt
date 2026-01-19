@@ -605,9 +605,12 @@ internal class MangagoParser(context: MangaLoaderContext) :
         keys.reversed().forEach { key ->
             for (i in s.length - 1 downTo key) {
                 if (i % 2 != 0) {
-                    val temp = s[i - key]
-                    s = s.replaceRange(i - key..i - key, s[i].toString())
-                    s = s.replaceRange(i..i, temp.toString())
+                    val sourceIdx = i - key
+                    if (sourceIdx >= 0) {
+                        val temp = s[sourceIdx]
+                        s = s.substring(0, sourceIdx) + s[i] + s.substring(sourceIdx + 1)
+                        s = s.substring(0, i) + temp + s.substring(i + 1)
+                    }
                 }
             }
         }
