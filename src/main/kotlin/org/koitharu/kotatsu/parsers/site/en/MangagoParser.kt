@@ -569,6 +569,18 @@ internal class MangagoParser(context: MangaLoaderContext) :
         println("[MANGAGO] Unscramble: found ${keyLocations.size} unique key locations")
         println("[MANGAGO] Unscramble: original image list length = ${imgList.length}")
         println("[MANGAGO] Unscramble: keyLocations = $keyLocations")
+        println("[MANGAGO] Unscramble: first 100 chars of original: ${imgList.take(100)}")
+
+        // Log characters at each key location for debugging
+        keyLocations.forEach { loc ->
+            if (loc < imgList.length) {
+                val char = imgList[loc]
+                val isDigit = char.isDigit()
+                println("[MANGAGO] Unscramble: position $loc = '$char' (digit: $isDigit)")
+            } else {
+                println("[MANGAGO] Unscramble: position $loc is beyond string length ${imgList.length}")
+            }
+        }
 
         // Check if characters at key locations are digits (required for unscrambling)
         val validKeyLocations = keyLocations.filter { loc ->
