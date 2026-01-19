@@ -377,11 +377,33 @@ internal class MangagoParser(context: MangaLoaderContext) :
 
         // Decrypt images from this specific page
         val images = decryptImageList(doc, page.url)
-        
-        val imageUrl = images[pageNumber - 1]
+
+        println("[MANGAGO] getPageUrl: page.url=${page.url}")
+        println("[MANGAGO] getPageUrl: pageNumber=$pageNumber, images.size=${images.size}")
+        if (images.isNotEmpty()) {
+            println("[MANGAGO] getPageUrl: first image URL: ${images.first().take(100)}")
+            if (images.size > 1) {
+                println("[MANGAGO] getPageUrl: last image URL: ${images.last().take(100)}")
+            }
+        }
+
+        // In mobile mode, try to get the image for this specific page
+        // Some pages have all images, some only have the current page's image
+        val imageUrl = if (pageNumber <= images.size) {
+            println("[MANGAGO] getPageUrl: using index ${pageNumber - 1}")
+            images[pageNumber - 1]
+        } else if (images.isNotEmpty()) {
+            // Fallback: the page might only contain its own image at index 0
+            println("[MANGAGO] getPageUrl: pageNumber $pageNumber > images.size ${images.size}, falling back to index 0")
+            images.first()
+        } else {
+            throw Exception("No images found for page $pageNumber")
+        }
+
+        println("[MANGAGO] getPageUrl: final imageUrl=${imageUrl.take(100)}")
 
         if (imageUrl.isBlank()) {
-            throw Exception("Decrypted image URL at index ${pageNumber - 1} is blank")
+            throw Exception("Decrypted image URL is blank for page $pageNumber")
         }
 
         // Add fragment if needed
@@ -420,11 +442,24 @@ internal class MangagoParser(context: MangaLoaderContext) :
 
         var imageList = String(decryptedBytes, Charsets.UTF_8).trimEnd('\u0000')
 
+        println("[MANGAGO] decryptImageList: raw decrypted length=${imageList.length}")
+        println("[MANGAGO] decryptImageList: raw first 200 chars: ${imageList.take(200)}")
+
         imageList = unscrambleImageList(imageList, deobfChapterJs)
 
-        return imageList.split(",")
+        println("[MANGAGO] decryptImageList: after unscramble length=${imageList.length}")
+        println("[MANGAGO] decryptImageList: after unscramble first 200 chars: ${imageList.take(200)}")
+
+        val result = imageList.split(",")
             .map { it.trim() }
             .filter { it.isNotBlank() }
+
+        println("[MANGAGO] decryptImageList: final image count=${result.size}")
+        result.forEachIndexed { index, url ->
+            println("[MANGAGO] decryptImageList: [$index] ${url.take(80)}")
+        }
+
+        return result
     }
 
 
