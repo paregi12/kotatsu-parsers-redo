@@ -319,10 +319,15 @@ internal class MangagoParser(context: MangaLoaderContext) :
             // Detect URL format and build batch URL generator
             // Format 1: .../chapter/xxx/yyy/1/ -> .../chapter/xxx/yyy/6/
             // Format 2: .../pg-1/ -> .../pg-6/
+            // Note: Large numbers (like 2115696) are chapter IDs, not page numbers
             val cleanUrl = fullUrl.removeSuffix("/")
             val lastSegment = cleanUrl.substringAfterLast("/")
 
             val isPgFormat = lastSegment.startsWith("pg-")
+            // Only treat as page number if it's a small number (< 1000), large numbers are chapter IDs
+            val pageNumber = lastSegment.toIntOrNull()
+            val isPageNumber = pageNumber != null && pageNumber < 1000
+
             val baseUrl: String
             val buildBatchUrl: (Int) -> String
 
@@ -331,16 +336,16 @@ internal class MangagoParser(context: MangaLoaderContext) :
                 baseUrl = cleanUrl.substringBeforeLast("/")
                 buildBatchUrl = { batchNum -> "$baseUrl/pg-$batchNum/" }
                 println("[MANGAGO] getPages: Using pg-N format, baseUrl=$baseUrl")
-            } else if (lastSegment.toIntOrNull() != null) {
-                // Format: .../1/ -> use /N/
+            } else if (isPageNumber) {
+                // URL ends with a small page number, replace it
                 baseUrl = cleanUrl.substringBeforeLast("/")
                 buildBatchUrl = { batchNum -> "$baseUrl/$batchNum/" }
-                println("[MANGAGO] getPages: Using /N/ format, baseUrl=$baseUrl")
+                println("[MANGAGO] getPages: Using /N/ format (replacing page $pageNumber), baseUrl=$baseUrl")
             } else {
-                // No page number in URL, append /N/
+                // No page number in URL (last segment is chapter ID or text), append /N/
                 baseUrl = cleanUrl
                 buildBatchUrl = { batchNum -> "$baseUrl/$batchNum/" }
-                println("[MANGAGO] getPages: No page in URL, using /N/ format, baseUrl=$baseUrl")
+                println("[MANGAGO] getPages: Appending /N/ format, baseUrl=$baseUrl")
             }
 
             // Mobile mode loads images in batches of 5
