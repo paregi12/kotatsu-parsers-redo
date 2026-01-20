@@ -315,11 +315,20 @@ internal class MangagoParser(context: MangaLoaderContext) :
         if (pageDropdown.isNotEmpty()) {
             val pagesCount = pageDropdown.select("li").size
             // Use fullUrl as base since doc.location() may be empty
-            val pageUrl = fullUrl.removeSuffix("/").substringBeforeLast("-")
+            // Remove trailing slash and any existing page number
+            val baseUrl = fullUrl.removeSuffix("/").let { url ->
+                // If URL ends with a number (page number), remove it
+                val lastSegment = url.substringAfterLast("/")
+                if (lastSegment.toIntOrNull() != null) {
+                    url.substringBeforeLast("/")
+                } else {
+                    url
+                }
+            }
             return (1..pagesCount).map { pageNum ->
                 MangaPage(
-                    id = generateUid("$pageUrl-$pageNum"),
-                    url = "$pageUrl-$pageNum/",
+                    id = generateUid("$baseUrl/$pageNum"),
+                    url = "$baseUrl/$pageNum/",
                     preview = null,
                     source = source,
                 )
@@ -368,36 +377,36 @@ internal class MangagoParser(context: MangaLoaderContext) :
         }
 
         // It is an HTML page URL (Mobile mode). Fetch and resolve.
-        val doc = webClient.httpGet(page.url).parseHtml()
-
-        // Extract page number from URL
+        // Extract page number from URL (format: .../chapter/xxx/yyy/pageNum/)
         val cleanUrl = page.url.removeSuffix("/")
-        val pageNumber = cleanUrl.substringAfterLast("-").toIntOrNull()
-            ?: throw Exception("Could not parse page number from URL")
+        val pageNumber = cleanUrl.substringAfterLast("/").toIntOrNull()
+            ?: throw Exception("Could not parse page number from URL: ${page.url}")
 
-        // Decrypt images from this specific page
-        val images = decryptImageList(doc, page.url)
+        // Mobile mode loads images in batches of 5
+        // Page 1-5 are in batch 1, pages 6-10 in batch 2, etc.
+        val batchSize = 5
+        val batchStart = ((pageNumber - 1) / batchSize) * batchSize + 1
+        val indexInBatch = (pageNumber - 1) % batchSize
+
+        // Build URL for the batch start page to fetch images for this batch
+        val baseUrl = cleanUrl.substringBeforeLast("/")
+        val batchUrl = "$baseUrl/$batchStart/"
+
+        val doc = webClient.httpGet(batchUrl).parseHtml()
+
+        // Decrypt images from this batch page
+        val images = decryptImageList(doc, batchUrl)
 
         println("[MANGAGO] getPageUrl: page.url=${page.url}")
-        println("[MANGAGO] getPageUrl: pageNumber=$pageNumber, images.size=${images.size}")
-        if (images.isNotEmpty()) {
-            println("[MANGAGO] getPageUrl: first image URL: ${images.first().take(100)}")
-            if (images.size > 1) {
-                println("[MANGAGO] getPageUrl: last image URL: ${images.last().take(100)}")
-            }
-        }
+        println("[MANGAGO] getPageUrl: pageNumber=$pageNumber, batchStart=$batchStart, indexInBatch=$indexInBatch")
+        println("[MANGAGO] getPageUrl: batchUrl=$batchUrl, images.size=${images.size}")
 
-        // In mobile mode, try to get the image for this specific page
-        // Some pages have all images, some only have the current page's image
-        val imageUrl = if (pageNumber <= images.size) {
-            println("[MANGAGO] getPageUrl: using index ${pageNumber - 1}")
-            images[pageNumber - 1]
-        } else if (images.isNotEmpty()) {
-            // Fallback: the page might only contain its own image at index 0
-            println("[MANGAGO] getPageUrl: pageNumber $pageNumber > images.size ${images.size}, falling back to index 0")
-            images.first()
+        // Get the correct image from the batch
+        val imageUrl = if (indexInBatch < images.size) {
+            println("[MANGAGO] getPageUrl: using index $indexInBatch")
+            images[indexInBatch]
         } else {
-            throw Exception("No images found for page $pageNumber")
+            throw Exception("Image not found for page $pageNumber (batch start: $batchStart, index: $indexInBatch, images count: ${images.size})")
         }
 
         println("[MANGAGO] getPageUrl: final imageUrl=${imageUrl.take(100)}")
