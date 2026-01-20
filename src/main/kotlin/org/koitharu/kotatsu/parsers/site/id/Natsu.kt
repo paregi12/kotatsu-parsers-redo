@@ -33,6 +33,8 @@ internal class Natsu(context: MangaLoaderContext) :
 		keys.add(userAgentKey)
 	}
 
+    override suspend fun getRelatedManga(seed: Manga): List<Manga> = emptyList()
+
 	override fun getRequestHeaders() = Headers.Builder()
 		.add("Referer", "https://natsu.tv/library/")
 		.add("Origin", "https://natsu.tv")
