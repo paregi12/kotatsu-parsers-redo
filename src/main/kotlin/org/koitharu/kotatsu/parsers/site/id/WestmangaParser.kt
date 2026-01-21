@@ -147,7 +147,7 @@ internal class WestmangaParser(context: MangaLoaderContext) :
                 source = source
             ))
         }
-        return chapters
+        return chapters.reversed()
     }
 
     private fun parseStatus(status: String): MangaState {
