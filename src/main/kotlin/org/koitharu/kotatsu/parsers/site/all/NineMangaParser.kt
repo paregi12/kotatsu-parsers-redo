@@ -186,6 +186,7 @@ internal abstract class NineMangaParser(
 
         val response = webClient.httpGet(url, headers)
         val doc = followJavaScriptRedirect(response, headers)
+        val finalUrl = response.request.url.toString()
 
         // Try to extract images from JavaScript first (for redirected pages)
         val jsImageUrls = extractImagesFromJavaScript(doc)
@@ -210,7 +211,6 @@ internal abstract class NineMangaParser(
             ?: throw ParseException("Page count not found", chapter.url)
 
         // Generate multi-image page URLs (each contains ~10 images)
-        val baseUrl = chapter.url.toAbsoluteUrl(domain)
         val allPageUrls = mutableListOf<String>()
 
         // Each page contains 10 images, calculate how many pages we need
@@ -219,14 +219,14 @@ internal abstract class NineMangaParser(
 
         for (pageNum in 1..totalPages) {
             // Generate URL: chapter-id-10-pageNumber.html (each page has 10 images)
-            allPageUrls.add(baseUrl.replace(".html", "-10-$pageNum.html"))
+            allPageUrls.add(finalUrl.replace(".html", "-10-$pageNum.html"))
         }
 
         val allPages = mutableListOf<MangaPage>()
 
         // Process all page URLs to collect images in order
         for (pageUrl in allPageUrls) {
-            val pageDoc = if (pageUrl == chapter.url.toAbsoluteUrl(domain)) {
+            val pageDoc = if (pageUrl == finalUrl) {
                 doc // Use already loaded first page
             } else {
                 try {
