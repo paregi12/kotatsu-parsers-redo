@@ -226,45 +226,62 @@ internal class Vipmanga(context: MangaLoaderContext) :
 	}
 
 	private suspend fun fetchChapters(mangaId: Int): List<MangaChapter> {
-		val url = "$baseUrl/api/manga/$mangaId/chapters?page=1&per_page=1000&order=newest"
-		val response = webClient.httpGet(url)
-		val body = response.body.string()
-		val json = JSONObject(body)
+		val allChapters = mutableListOf<MangaChapter>()
+		var page = 1
+		var totalPages = 1
 
-		if (!json.optBoolean("success", false)) {
-			return emptyList()
-		}
+		do {
+			val url = "$baseUrl/api/manga/$mangaId/chapters?page=$page&per_page=20&order=newest"
+			val response = webClient.httpGet(url)
+			val body = response.body.string()
+			val json = JSONObject(body)
 
-		val data = json.optJSONArray("data") ?: return emptyList()
-
-		return data.mapJSONNotNull { item ->
-			val chapterObj = item as JSONObject
-			val chapterId = chapterObj.optString("id")
-			val chapterTitle = chapterObj.optString("title")
-			val chapterNumber = chapterObj.optInt("number", 0).toFloat()
-			val chapterSlug = chapterObj.optString("slug")
-			val publishDate = chapterObj.optString("publish_date")
-
-			val url = "$mangaId/$chapterSlug"
-
-			val uploadDate = try {
-				dateFormat.parse(publishDate)?.time ?: 0L
-			} catch (e: Exception) {
-				0L
+			if (!json.optBoolean("success", false)) {
+				break
 			}
 
-			MangaChapter(
-				id = generateUid(url),
-				title = chapterTitle.ifEmpty { "Chapter $chapterNumber" },
-				number = chapterNumber,
-				volume = 0,
-				url = url,
-				scanlator = null,
-				uploadDate = uploadDate,
-				branch = null,
-				source = source,
-			)
-		}
+			val data = json.optJSONArray("data") ?: break
+
+			val pageChapters = data.mapJSONNotNull { item ->
+				val chapterObj = item as JSONObject
+				val chapterId = chapterObj.optString("id")
+				val chapterTitle = chapterObj.optString("title")
+				val chapterNumber = chapterObj.optInt("number", 0).toFloat()
+				val chapterSlug = chapterObj.optString("slug")
+				val publishDate = chapterObj.optString("publish_date")
+
+				val url = "$mangaId/$chapterSlug"
+
+				val uploadDate = try {
+					dateFormat.parse(publishDate)?.time ?: 0L
+				} catch (e: Exception) {
+					0L
+				}
+
+				MangaChapter(
+					id = generateUid(url),
+					title = chapterTitle.ifEmpty { "Chapter $chapterNumber" },
+					number = chapterNumber,
+					volume = 0,
+					url = url,
+					scanlator = null,
+					uploadDate = uploadDate,
+					branch = null,
+					source = source,
+				)
+			}
+
+			allChapters.addAll(pageChapters)
+
+			val pagination = json.optJSONObject("pagination")
+			if (pagination != null) {
+				totalPages = pagination.optInt("total_pages", 1)
+			}
+
+			page++
+		} while (page <= totalPages)
+
+		return allChapters
 	}
 
 	override suspend fun getPages(chapter: MangaChapter): List<MangaPage> {
