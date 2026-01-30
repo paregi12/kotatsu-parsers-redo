@@ -346,17 +346,27 @@ internal abstract class NineMangaParser(
 
     private suspend fun followJavaScriptRedirect(response: okhttp3.Response, headers: okhttp3.Headers): Document {
         var doc = response.parseHtml()
+        var currentUrl = response.request.url.toString()
 
-        // Check if we've been redirected to a source selection page
-        val responseUrl = response.request.url.host
-        if (!responseUrl.contains("ninemanga", ignoreCase = true)) {
-            // Look for source selection buttons - support all ninemanga language variants
-            val sourceLink = doc.selectFirst("a.vision-button[href*=ninemanga], a.cool-blue[href*=ninemanga]")?.attr("href")
+        // Follow redirects until we get back to ninemanga
+        repeat(5) { // Max 5 redirect hops to avoid infinite loops
+            val currentHost = currentUrl.toHttpUrl().host
+            if (currentHost.contains("ninemanga", ignoreCase = true)) {
+                return doc // We're on ninemanga, done
+            }
+
+            // Look for source selection buttons that link directly to ninemanga domain
+            val sourceLink = doc.select("a.vision-button, a.cool-blue, a[href*=ninemanga.com]")
+                .firstOrNull { link ->
+                    val href = link.attr("href")
+                    href.contains("ninemanga.com", ignoreCase = true)
+                }?.attr("href")
+
             if (sourceLink != null) {
                 // Clean up the URL (remove &amp; and replace with &)
                 var cleanUrl = sourceLink.replace("&amp;", "&")
 
-                // If it's a relative URL, make it absolute using the domain
+                // If it's a relative URL, make it absolute using the ninemanga domain
                 if (!cleanUrl.startsWith("http")) {
                     cleanUrl = "https://$domain$cleanUrl"
                 }
@@ -364,9 +374,16 @@ internal abstract class NineMangaParser(
                 // Follow the source redirect
                 val sourceResponse = webClient.httpGet(cleanUrl, headers)
                 doc = sourceResponse.parseHtml()
+                currentUrl = sourceResponse.request.url.toString()
             } else {
-                throw ParseException("Redirected to wrong domain: $responseUrl", response.request.url.toString())
+                // No direct ninemanga link found, throw exception
+                throw ParseException("Redirected to wrong domain: $currentHost", currentUrl)
             }
+        }
+
+        // Check final URL after redirect loop
+        if (!currentUrl.toHttpUrl().host.contains("ninemanga", ignoreCase = true)) {
+            throw ParseException("Failed to redirect back to ninemanga", currentUrl)
         }
 
         return doc
