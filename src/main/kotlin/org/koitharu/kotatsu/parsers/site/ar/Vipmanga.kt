@@ -147,9 +147,9 @@ internal class Vipmanga(context: MangaLoaderContext) :
 			val chapterId = chapterObj.optInt("chapter_id")
 			val chapterTitle = chapterObj.optString("name")
 			val chapterNumber = chapterTitle.toFloatOrNull()
-			val chapterSlug = chapterObj.optString("link").substringAfterLast("/")
-			val url = "$mangaId/$chapterSlug"
 			val dateText = chapterObj.optString("date")
+
+			val url = "$mangaId/$chapterId"
 
 			val uploadDate = try {
 				dateFormat.parse(dateText)?.time ?: 0L
@@ -247,10 +247,9 @@ internal class Vipmanga(context: MangaLoaderContext) :
 				val chapterId = chapterObj.optString("id")
 				val chapterTitle = chapterObj.optString("title")
 				val chapterNumber = chapterObj.optInt("number", 0).toFloat()
-				val chapterSlug = chapterObj.optString("slug")
 				val publishDate = chapterObj.optString("publish_date")
 
-				val url = "$mangaId/$chapterSlug"
+				val url = "$mangaId/$chapterId"
 
 				val uploadDate = try {
 					dateFormat.parse(publishDate)?.time ?: 0L
@@ -281,7 +280,7 @@ internal class Vipmanga(context: MangaLoaderContext) :
 			page++
 		} while (page <= totalPages)
 
-		return allChapters
+		return allChapters.sortedByDescending { it.number }
 	}
 
 	override suspend fun getPages(chapter: MangaChapter): List<MangaPage> {
