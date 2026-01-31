@@ -168,7 +168,7 @@ internal class Vipmanga(context: MangaLoaderContext) :
 				branch = null,
 				source = source,
 			)
-		}.sortedByDescending { it.number }
+		}.sortedBy { it.number }
 	}
 
 	override suspend fun getDetails(manga: Manga): Manga = coroutineScope {
@@ -225,24 +225,23 @@ internal class Vipmanga(context: MangaLoaderContext) :
 		)
 	}
 
-	private suspend fun fetchChapters(mangaId: Int): List<MangaChapter> {
+	private suspend fun fetchChapters(mangaId: Int): List<MangaChapter> = coroutineScope {
+		val firstPageUrl = "$baseUrl/api/manga/$mangaId/chapters?page=1&per_page=20&order=oldest"
+		val firstResponse = webClient.httpGet(firstPageUrl)
+		val firstBody = firstResponse.body.string()
+		val firstJson = JSONObject(firstBody)
+
+		if (!firstJson.optBoolean("success", false)) {
+			return@coroutineScope emptyList()
+		}
+
+		val pagination = firstJson.optJSONObject("pagination")
+		val totalPages = pagination?.optInt("total_pages", 1) ?: 1
+
 		val allChapters = mutableListOf<MangaChapter>()
-		var page = 1
-		var totalPages = 1
 
-		do {
-			val url = "$baseUrl/api/manga/$mangaId/chapters?page=$page&per_page=20&order=newest"
-			val response = webClient.httpGet(url)
-			val body = response.body.string()
-			val json = JSONObject(body)
-
-			if (!json.optBoolean("success", false)) {
-				break
-			}
-
-			val data = json.optJSONArray("data") ?: break
-
-			val pageChapters = data.mapJSONNotNull { item ->
+		fun parseChapters(data: JSONArray): List<MangaChapter> {
+			return data.mapJSONNotNull { item ->
 				val chapterObj = item as JSONObject
 				val chapterId = chapterObj.optString("id")
 				val chapterTitle = chapterObj.optString("title")
@@ -269,18 +268,37 @@ internal class Vipmanga(context: MangaLoaderContext) :
 					source = source,
 				)
 			}
+		}
 
-			allChapters.addAll(pageChapters)
+		val firstData = firstJson.optJSONArray("data")
+		if (firstData != null) {
+			allChapters.addAll(parseChapters(firstData))
+		}
 
-			val pagination = json.optJSONObject("pagination")
-			if (pagination != null) {
-				totalPages = pagination.optInt("total_pages", 1)
+		if (totalPages > 1) {
+			val pageTasks = (2..totalPages).map { page ->
+				async {
+					val url = "$baseUrl/api/manga/$mangaId/chapters?page=$page&per_page=20&order=oldest"
+					val response = webClient.httpGet(url)
+					val body = response.body.string()
+					val json = JSONObject(body)
+
+					if (json.optBoolean("success", false)) {
+						json.optJSONArray("data")?.let { data ->
+							parseChapters(data)
+						}
+					} else {
+						emptyList()
+					}
+				}
 			}
 
-			page++
-		} while (page <= totalPages)
+			pageTasks.awaitAll().forEach { chapters ->
+				allChapters.addAll(chapters)
+			}
+		}
 
-		return allChapters.sortedByDescending { it.number }
+		return@coroutineScope allChapters.sortedBy { it.number }
 	}
 
 	override suspend fun getPages(chapter: MangaChapter): List<MangaPage> {
@@ -344,28 +362,21 @@ internal class Vipmanga(context: MangaLoaderContext) :
 	}
 
 	private suspend fun fetchAvailableGenres(): Set<MangaTag> {
-		val url = "$baseUrl/api/manga?page=1&per_page=100&include_genres=true"
-		val response = webClient.httpGet(url)
-		val body = response.body.string()
-		val json = JSONObject(body)
-
-		if (!json.optBoolean("success", false)) {
-			return emptySet()
-		}
-
-		val data = json.optJSONArray("data") ?: return emptySet()
+		val url = baseUrl
+		val doc = webClient.httpGet(url).parseHtml()
 		val genresSet = mutableSetOf<MangaTag>()
 
-		for (i in 0 until data.length()) {
-			val item = data.getJSONObject(i)
-			val genresArray = item.optJSONArray("genres") ?: continue
+		val genreButtons = doc.select("button.px-4.py-2.rounded-full.text-sm.font-medium")
+		for (button in genreButtons) {
+			val genreName = button.selectFirst("span:first-child")?.text()?.trim()
+			val countSpan = button.select("span:nth-child(2)")
 
-			for (j in 0 until genresArray.length()) {
-				val genreObj = genresArray.getJSONObject(j)
+			if (!genreName.isNullOrBlank() && countSpan.isNotEmpty()) {
+				val slug = genreName.lowercase(Locale.ROOT).replace(" ", "-")
 				genresSet.add(
 					MangaTag(
-						key = genreObj.optString("slug"),
-						title = genreObj.optString("name"),
+						key = slug,
+						title = genreName,
 						source = source,
 					)
 				)
