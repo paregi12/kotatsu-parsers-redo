@@ -135,7 +135,13 @@ internal class Komikcast(context: MangaLoaderContext) :
 				else -> null
 			},
 			authors = setOfNotNull(seriesData.author),
-			tags = seriesData.genres.mapNotNull { fetchGenreMap()[it.name] } as Set<MangaTag>,
+			tags = seriesData.genres.mapNotNull { it ->
+				MangaTag(
+					title = it.name,
+					key = it.id.toString(),
+					source = source,
+				)
+			}.toSet(),
 			coverUrl = seriesData.coverImage,
 			rating = if (seriesData.rating > 0) seriesData.rating / 10f else RATING_UNKNOWN,
 			chapters = seriesData.chapters?.mapIndexedNotNull { index, chapterData ->
@@ -284,13 +290,17 @@ internal class Komikcast(context: MangaLoaderContext) :
 			responseObj.getJSONObject("data")
 		}
 
-		val genreIds = dataObj.getJSONArray("genreIds")
 		val genres = mutableListOf<GenreData>()
-		for (i in 0 until genreIds.length()) {
-			genres.add(GenreData(
-				id = genreIds.getInt(i),
-				name = "",
-			))
+		if (dataObj.has("genres") && !dataObj.isNull("genres")) {
+			val genresArray = dataObj.getJSONArray("genres")
+			for (i in 0 until genresArray.length()) {
+				val genreObj = genresArray.getJSONObject(i)
+				val genreData = genreObj.getJSONObject("data")
+				genres.add(GenreData(
+					id = genreObj.getInt("id"),
+					name = genreData.getString("name"),
+				))
+			}
 		}
 
 		val chapters = if (dataObj.has("chapters") && !dataObj.isNull("chapters")) {
