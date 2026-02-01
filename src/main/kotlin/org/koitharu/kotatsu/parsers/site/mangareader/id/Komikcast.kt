@@ -171,7 +171,10 @@ internal class Komikcast(context: MangaLoaderContext) :
 			append(chapterIndex)
 		}
 
-		val json = webClient.httpGet(url).body?.string() ?: throw Exception("Failed to fetch chapter pages")
+		val json = webClient.httpGet(
+			url,
+			headers = mapOf("Referer" to "https://v1.komikcast.fit/")
+		).body?.string() ?: throw Exception("Failed to fetch chapter pages")
 		val chapterData = parseChapterDetailJson(json)
 
 		val images = chapterData.dataImages.entries.sortedBy { it.key.toIntOrNull() ?: 0 }
@@ -320,7 +323,7 @@ internal class Komikcast(context: MangaLoaderContext) :
 			for (i in 0 until dataArray.length()) {
 				val chapterObj = dataArray.getJSONObject(i)
 				val chapterData = chapterObj.getJSONObject("data")
-				val chapterIndex = chapterData.getInt("index")
+				val chapterIndex = chapterData.getDouble("index")
 				val chapterUrl = "/series/$slug/chapters/$chapterIndex"
 
 				val chapter = MangaChapter(
@@ -344,15 +347,11 @@ internal class Komikcast(context: MangaLoaderContext) :
 
 	private fun parseChapterDetailJson(json: String): ChapterDetailData {
 		val responseObj = org.json.JSONObject(json)
-		val dataObj = if (responseObj.has("data") && responseObj.getJSONObject("data").has("data")) {
-			responseObj.getJSONObject("data").getJSONObject("data")
-		} else {
-			responseObj.getJSONObject("data")
-		}
+		val responseData = responseObj.getJSONObject("data")
 
 		val imagesMap = mutableMapOf<String, String>()
-		if (dataObj.has("dataImages") && !dataObj.isNull("dataImages")) {
-			val imagesObj = dataObj.getJSONObject("dataImages")
+		if (responseData.has("dataImages") && !responseData.isNull("dataImages")) {
+			val imagesObj = responseData.getJSONObject("dataImages")
 			val keys = imagesObj.keys()
 			while (keys.hasNext()) {
 				val key = keys.next()
