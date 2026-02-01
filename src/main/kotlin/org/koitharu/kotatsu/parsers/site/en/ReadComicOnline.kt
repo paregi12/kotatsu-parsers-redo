@@ -28,7 +28,6 @@ import org.koitharu.kotatsu.parsers.util.mapToSet
 import org.koitharu.kotatsu.parsers.util.parseHtml
 import org.koitharu.kotatsu.parsers.util.selectFirstOrThrow
 import org.koitharu.kotatsu.parsers.util.toAbsoluteUrl
-import org.koitharu.kotatsu.parsers.util.toRelativeUrl
 import org.koitharu.kotatsu.parsers.util.urlEncoded
 import java.text.SimpleDateFormat
 import java.util.EnumSet
@@ -237,16 +236,16 @@ internal class ReadComicOnline(context: MangaLoaderContext) :
 	private suspend fun fetchAvailableTags(): Set<MangaTag> {
 		return try {
 			val doc = webClient.httpGet("https://$domain/AdvanceSearch").parseHtml()
-			doc.select("ul#genres li").mapToSet { li ->
+			doc.select("ul#genres li").mapNotNull { li ->
 				val select = li.selectFirst("select")
-				val gid = select?.attr("gid") ?: return@mapToSet null
-				val title = li.selectFirst("label a")?.text()?.trim() ?: return@mapToSet null
+				val gid = select?.attr("gid") ?: return@mapNotNull null
+				val tagTitle = li.selectFirst("label a")?.text()?.trim() ?: return@mapNotNull null
 				MangaTag(
+					title = tagTitle,
 					key = gid,
-					title = title,
 					source = source,
 				)
-			}.filterNotNull().toSet()
+			}.toSet()
 		} catch (_: Exception) {
 			defaultGenreTags
 		}
@@ -255,22 +254,23 @@ internal class ReadComicOnline(context: MangaLoaderContext) :
 	override suspend fun getDetails(manga: Manga): Manga {
 		val doc = webClient.httpGet(manga.url.toAbsoluteUrl(domain)).parseHtml()
 
-		val infoDiv = doc.selectFirst("div.barContent")
+		val infoDiv = doc.selectFirst("div.section.group div.col.info")
 		val altTitle = infoDiv?.selectFirst("p:has(span.info:contains(Other name)) a")?.text()
-		val genres = infoDiv?.select("p:has(span.info:contains(Genres)) a")?.mapToSet { a ->
+		val genres = infoDiv?.select("p:has(span:contains(Genres)) a")?.mapToSet { a ->
 			MangaTag(
-				key = a.attr("href").substringAfterLast('/'),
 				title = a.text(),
+				key = a.attr("href").substringAfterLast('/'),
 				source = source,
 			)
 		} ?: emptySet()
 
-		val publisher = infoDiv?.selectFirst("p:has(span.info:contains(Publisher)) a")?.text()
 		val writer = infoDiv?.selectFirst("p:has(span.info:contains(Writer)) a")?.text()
 		val artist = infoDiv?.selectFirst("p:has(span.info:contains(Artist)) a")?.text()
-		val description = doc.selectFirst("div.barContent div.section.group div")?.text()
 
-		val statusText = infoDiv?.selectFirst("p:has(span.info:contains(Status)) a")?.text()
+		// Description is in a separate section group
+		val description = doc.select("div.section.group p p").text().takeIf { it.isNotBlank() }
+
+		val statusText = infoDiv?.selectFirst("p:has(span:contains(Status))")?.text()
 		val state = when {
 			statusText?.contains("Ongoing", ignoreCase = true) == true -> MangaState.ONGOING
 			statusText?.contains("Completed", ignoreCase = true) == true -> MangaState.FINISHED
@@ -285,12 +285,13 @@ internal class ReadComicOnline(context: MangaLoaderContext) :
 			authors.add(artist)
 		}
 
-		val dateFormat = SimpleDateFormat("MM/dd/yyyy", Locale.US)
-		val chapters = doc.select("table.listing tr:has(a)").mapIndexed { index, tr ->
-			val a = tr.selectFirstOrThrow("td a")
+		val dateFormat = SimpleDateFormat("M/dd/yyyy", Locale.US)
+		val chapterElements = doc.select("ul.list li")
+		val chapters = chapterElements.mapIndexed { index, li ->
+			val a = li.selectFirstOrThrow("div.col-1 a")
 			val url = a.attrAsRelativeUrl("href")
 			val name = a.text().trim()
-			val dateText = tr.select("td").lastOrNull()?.text()?.trim()
+			val dateText = li.selectFirst("div.col-2 span")?.text()?.trim()
 			val date = try {
 				dateText?.let { dateFormat.parse(it)?.time } ?: 0L
 			} catch (_: Exception) {
@@ -300,7 +301,7 @@ internal class ReadComicOnline(context: MangaLoaderContext) :
 			MangaChapter(
 				id = generateUid(url),
 				title = name,
-				number = (doc.select("table.listing tr:has(a)").size - index).toFloat(),
+				number = (chapterElements.size - index).toFloat(),
 				volume = 0,
 				url = url,
 				scanlator = null,
