@@ -210,7 +210,8 @@ internal class Komikcast(context: MangaLoaderContext) :
 	private fun parseSeriesList(json: String): List<Manga> {
 		val result = mutableListOf<Manga>()
 		try {
-			val dataArray = org.json.JSONArray(json)
+			val responseObj = org.json.JSONObject(json)
+			val dataArray = responseObj.getJSONArray("data")
 
 			for (i in 0 until dataArray.length()) {
 				val seriesObj = dataArray.getJSONObject(i)
