@@ -301,7 +301,7 @@ internal class ReadComicOnline(context: MangaLoaderContext) :
 			MangaChapter(
 				id = generateUid(url),
 				title = name,
-				number = (chapterElements.size - index).toFloat(),
+				number = (index + 1).toFloat(),
 				volume = 0,
 				url = url,
 				scanlator = null,
@@ -309,7 +309,7 @@ internal class ReadComicOnline(context: MangaLoaderContext) :
 				branch = null,
 				source = source,
 			)
-		}
+		}.reversed()
 
 		return manga.copy(
 			altTitles = setOfNotNull(altTitle),
@@ -342,19 +342,31 @@ internal class ReadComicOnline(context: MangaLoaderContext) :
 
 	private suspend fun captureDocumentWithJs(url: String): Document {
 		val script = """
-			(() => {
+			(async () => {
 				const divImage = document.querySelector('div#divImage');
 				if (!divImage) {
 					return null;
 				}
 
-				// Check if images are loaded (not blank.gif)
 				const images = divImage.querySelectorAll('p img');
 				if (images.length === 0) {
 					return null;
 				}
 
-				// Wait for at least some real images to load
+				// Scroll through the page to trigger lazy loading
+				const scrollStep = window.innerHeight;
+				const maxScroll = document.body.scrollHeight;
+
+				for (let scrollPos = 0; scrollPos < maxScroll; scrollPos += scrollStep) {
+					window.scrollTo(0, scrollPos);
+					await new Promise(resolve => setTimeout(resolve, 100));
+				}
+
+				// Scroll to bottom to ensure all images are triggered
+				window.scrollTo(0, document.body.scrollHeight);
+				await new Promise(resolve => setTimeout(resolve, 500));
+
+				// Count loaded images
 				let loadedCount = 0;
 				for (const img of images) {
 					const src = img.getAttribute('src') || '';
@@ -363,8 +375,8 @@ internal class ReadComicOnline(context: MangaLoaderContext) :
 					}
 				}
 
-				// Return if we have enough loaded images (at least 3 or all of them)
-				if (loadedCount >= Math.min(3, images.length)) {
+				// Return if most images are loaded
+				if (loadedCount >= images.length * 0.9 || loadedCount >= images.length - 2) {
 					window.stop();
 					return document.documentElement.outerHTML;
 				}
