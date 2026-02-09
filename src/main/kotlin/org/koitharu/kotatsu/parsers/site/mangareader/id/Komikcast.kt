@@ -161,6 +161,8 @@ internal class Komikcast(context: MangaLoaderContext) :
 		}
 
 		val json = webClient.httpGet(url).body?.string() ?: throw Exception("Failed to fetch chapter pages")
+		println("Komikcast getPages URL: $url")
+		println("Komikcast getPages response: $json")
 		val chapterData = parseChapterDetailJson(json)
 
 		val images = chapterData.dataImages.entries.sortedBy { it.key.toIntOrNull() ?: 0 }
@@ -313,9 +315,12 @@ internal class Komikcast(context: MangaLoaderContext) :
 
 			for (i in 0 until dataArray.length()) {
 				val chapterObj = dataArray.getJSONObject(i)
+				val chapterId = chapterObj.getInt("id")
 				val chapterData = chapterObj.getJSONObject("data")
 				val chapterIndex = chapterData.getDouble("index")
-				val chapterUrl = "/series/$slug/chapters/$chapterIndex"
+				val chapterSlug = chapterData.optString("slug").takeIf { it.isNotEmpty() && it != "null" }
+				val chapterIdentifier = chapterSlug ?: chapterId.toString()
+				val chapterUrl = "/series/$slug/chapters/$chapterIdentifier"
 
 				val chapter = MangaChapter(
 					id = generateUid(chapterUrl),
