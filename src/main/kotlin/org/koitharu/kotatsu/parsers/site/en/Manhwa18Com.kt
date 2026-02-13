@@ -1,6 +1,7 @@
 package org.koitharu.kotatsu.parsers.site.en
 
 import androidx.collection.ArrayMap
+import okhttp3.HttpUrl
 import org.koitharu.kotatsu.parsers.MangaLoaderContext
 import org.koitharu.kotatsu.parsers.MangaSourceParser
 import org.koitharu.kotatsu.parsers.config.ConfigKey
@@ -8,6 +9,7 @@ import org.koitharu.kotatsu.parsers.core.PagedMangaParser
 import org.koitharu.kotatsu.parsers.model.*
 import org.koitharu.kotatsu.parsers.util.*
 import org.koitharu.kotatsu.parsers.util.suspendlazy.suspendLazy
+import java.text.SimpleDateFormat
 import java.util.*
 
 @MangaSourceParser("MANHWA18COM", "Manhwa18.com", "en", type = ContentType.HENTAI)
@@ -50,10 +52,14 @@ internal class Manhwa18Com(context: MangaLoaderContext) :
 	override suspend fun getFavicons(): Favicons {
 		return Favicons(
 			listOf(
-				Favicon("https://$domain/uploads/logos/logo-mini.png", 92, null),
+				Favicon("https://$domain/favicon1.ico", 32, null),
 			),
 			domain,
 		)
+	}
+
+	private val dateFormat by lazy {
+		SimpleDateFormat("dd/MM/yyyy", Locale.ENGLISH)
 	}
 
 	override suspend fun getListPage(page: Int, order: SortOrder, filter: MangaListFilter): List<Manga> {
@@ -68,18 +74,14 @@ internal class Manhwa18Com(context: MangaLoaderContext) :
 				append(filter.query.urlEncoded())
 			}
 
-			append("&accept_genres=")
 			if (filter.tags.isNotEmpty()) {
-				append(
-					filter.tags.joinToString(",") { it.key },
-				)
+				append("&accept_genres=")
+				append(filter.tags.joinToString(",") { it.key })
 			}
 
-			append("&reject_genres=")
 			if (filter.tagsExclude.isNotEmpty()) {
-				append(
-					filter.tagsExclude.joinToString(",") { it.key },
-				)
+				append("&reject_genres=")
+				append(filter.tagsExclude.joinToString(",") { it.key })
 			}
 
 			append("&sort=")
@@ -106,21 +108,13 @@ internal class Manhwa18Com(context: MangaLoaderContext) :
 					},
 				)
 			}
-
-			// Support author
-			// filter.author.let{
-			// 	the
-			// 	append("&artist=")
-			// 	append(filter.author)
-			// }
-
 		}
 
 		val docs = webClient.httpGet(url).parseHtml()
 
-		return docs.select(".card-body .thumb-item-flow")
+		return docs.select(".thumb-wrapper")
 			.map {
-				val titleElement = it.selectFirstOrThrow(".thumb_attr.series-title > a")
+				val titleElement = it.nextElementSibling()?.selectFirst("a") ?: it.selectFirstOrThrow("a")
 				val absUrl = titleElement.attrAsAbsoluteUrl("href")
 				Manga(
 					id = generateUid(absUrl.toRelativeUrl(domain)),
@@ -130,7 +124,7 @@ internal class Manhwa18Com(context: MangaLoaderContext) :
 					publicUrl = absUrl,
 					rating = RATING_UNKNOWN,
 					contentRating = ContentRating.ADULT,
-					coverUrl = it.selectFirst("div.img-in-ratio")?.attrAsAbsoluteUrl("data-bg"),
+					coverUrl = it.selectFirst(".img-in-ratio")?.attrAsAbsoluteUrl("data-bg"),
 					tags = emptySet(),
 					state = null,
 					authors = emptySet(),
@@ -172,7 +166,7 @@ internal class Manhwa18Com(context: MangaLoaderContext) :
 			description = docs.selectFirst(".series-summary .summary-content")?.html(),
 			tags = tags.orEmpty(),
 			state = state,
-			chapters = docs.select(".card-body > .list-chapters > a").mapChapters(reversed = true) { index, element ->
+			chapters = docs.select(".list-chapters > a").mapChapters(reversed = true) { index, element ->
 				val chapterUrl = element.attrAsAbsoluteUrlOrNull("href")?.toRelativeUrl(domain)
 					?: return@mapChapters null
 				val uploadDate = parseUploadDate(element.selectFirst(".chapter-time")?.text())
@@ -193,22 +187,8 @@ internal class Manhwa18Com(context: MangaLoaderContext) :
 
 	private fun parseUploadDate(timeStr: String?): Long {
 		timeStr ?: return 0
-		val timeWords = timeStr.split(' ')
-		if (timeWords.size != 3) return 0
-		val timeWord = timeWords[1]
-		val timeAmount = timeWords[0].toIntOrNull() ?: return 0
-		val timeUnit = when (timeWord) {
-			"minute", "minutes" -> Calendar.MINUTE
-			"hour", "hours" -> Calendar.HOUR
-			"day", "days" -> Calendar.DAY_OF_YEAR
-			"week", "weeks" -> Calendar.WEEK_OF_YEAR
-			"month", "months" -> Calendar.MONTH
-			"year", "years" -> Calendar.YEAR
-			else -> return 0
-		}
-		val cal = Calendar.getInstance()
-		cal.add(timeUnit, -timeAmount)
-		return cal.time.time
+		val dateStr = timeStr.substringAfter(" - ").trim()
+		return dateFormat.parseSafe(dateStr)
 	}
 
 	override suspend fun getPages(chapter: MangaChapter): List<MangaPage> {
@@ -225,6 +205,15 @@ internal class Manhwa18Com(context: MangaLoaderContext) :
 				source = source,
 			)
 		}
+	}
+
+	override suspend fun resolveLink(resolver: LinkResolver, link: HttpUrl): Manga? {
+		val path = link.encodedPath
+		if (!path.startsWith("/manga/")) return null
+		val slug = path.removePrefix("/manga/").substringBefore("/")
+		if (slug.isEmpty()) return null
+		val mangaUrl = "/manga/$slug"
+		return resolver.resolveManga(this, mangaUrl)
 	}
 
 	private val tagsMap = suspendLazy(initializer = ::parseTags)
