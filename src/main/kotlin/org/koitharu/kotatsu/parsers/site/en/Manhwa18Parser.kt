@@ -188,7 +188,7 @@ internal class Manhwa18Parser(context: MangaLoaderContext) :
 				branch = null,
 				source = source,
 			)
-		}
+		}.reversed()
 
 		val cover = mangaData.optString("cover_url").nullIfEmpty() ?: mangaData.optString("thumb_url").nullIfEmpty()
 
@@ -204,6 +204,15 @@ internal class Manhwa18Parser(context: MangaLoaderContext) :
 			largeCoverUrl = cover ?: manga.largeCoverUrl,
 			rating = mangaData.optDouble("rating_average", 0.0).toFloat() / 5f,
 		)
+	}
+
+	override suspend fun resolveLink(resolver: LinkResolver, link: HttpUrl): Manga? {
+		val path = link.encodedPath
+		if (!path.startsWith("/manga/")) return null
+		val slug = path.removePrefix("/manga/").substringBefore("/")
+		if (slug.isEmpty()) return null
+		val mangaUrl = "/manga/$slug"
+		return resolver.resolveManga(this, mangaUrl)
 	}
 
 	override suspend fun getPages(chapter: MangaChapter): List<MangaPage> {
