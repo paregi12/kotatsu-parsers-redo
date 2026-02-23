@@ -194,7 +194,10 @@ internal class MangaBuff(context: MangaLoaderContext) :
 			coverUrl = doc.selectFirst(".manga__img img, img.manga-mobile__image")?.src() ?: manga.coverUrl,
 			rating = rating,
 			chapters = chapterElements.mapChapters(reversed = true) { i, e ->
-				val chapterUrl = e.attrAsRelativeUrl("href")
+				val chapterHref = e.attrAsAbsoluteUrlOrNull("href")
+					?: e.attrOrNull("href")
+					?: throw ParseException("Cannot find chapter href", manga.url.toAbsoluteUrl(domain))
+				val chapterUrl = chapterHref.toRelativeUrl(domain)
 				val title = e.select(".chapters__volume, .chapters__value, .chapters__name").text()
 					.ifBlank { e.text() }
 				val chapterNumber = CHAPTER_NUMBER_REGEX.find(title)
