@@ -390,9 +390,12 @@ internal class MangaBuff(context: MangaLoaderContext) :
 			}
 		}
 		if (tags.isEmpty()) {
-			// New filter UI uses simple-select options with data-id instead of native <select>.
-			doc.select(".ss-list .ss-option[data-id], .ss-option[data-id]").forEach { option ->
-				val value = option.attr("data-id").trim()
+			// New filter UI uses simple-select; prefer value/data-value, then id.
+			doc.select(".ss-list .ss-option, .ss-option").forEach { option ->
+				val value = option.attrOrNull("value")?.trim().orEmpty()
+					.ifEmpty { option.attrOrNull("data-value")?.trim().orEmpty() }
+					.ifEmpty { option.id().trim() }
+					.ifEmpty { option.attrOrNull("data-id")?.trim().orEmpty() }
 				val title = option.text().trim()
 				if (value.isNotEmpty() && title.isNotEmpty()) {
 					tags.add(
